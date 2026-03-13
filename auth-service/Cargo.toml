@@ -7,3 +7,9 @@ edition = "2021"
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+oauth2 = { version = "4", features = ["reqwest"] }
+jsonwebtoken = "9"
+reqwest = { version = "0.12", features = ["json"] }
+dotenvy = "0.15"
+async-trait = "0.1"
