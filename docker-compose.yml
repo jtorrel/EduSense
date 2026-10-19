@@ -1,0 +1,17 @@
+# Lancement local de l'ensemble des services : docker compose up --build
+services:
+  health:
+    build:
+      context: .
+      dockerfile: services/health/Dockerfile
+    environment:
+      HEALTH_BIND_ADDR: 0.0.0.0:8080
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      - "8081:8080"
+
+  frontend:
+    build:
+      context: frontend
+    ports:
+      - "8080:8080"

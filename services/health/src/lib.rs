@@ -43,6 +43,7 @@ pub async fn serve(
     listener: TcpListener,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
-    let _ = (listener, shutdown);
-    todo!()
+    axum::serve(listener, adapters::http::router())
+        .with_graceful_shutdown(shutdown)
+        .await
 }

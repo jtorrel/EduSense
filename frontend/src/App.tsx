@@ -4,7 +4,11 @@
  * @returns La page d'accueil de l'application.
  */
 function App() {
-  return null
+  return (
+    <main>
+      <h1>EduSense</h1>
+    </main>
+  )
 }
 
 export default App

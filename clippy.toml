@@ -1,0 +1,2 @@
+# Identifiants autorisés sans backticks dans la documentation (lint doc_markdown).
+doc-valid-idents = ["EduSense", "OpenAPI", ".."]

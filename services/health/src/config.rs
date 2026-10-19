@@ -60,8 +60,10 @@ impl Config {
     /// assert_eq!(config.bind_addr.port(), 3000);
     /// ```
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Result<Self, ConfigError> {
-        let _ = lookup;
-        todo!()
+        let raw = lookup(BIND_ADDR_VAR).unwrap_or_else(|| DEFAULT_BIND_ADDR.to_owned());
+        raw.parse()
+            .map(|bind_addr| Self { bind_addr })
+            .map_err(|_| ConfigError::InvalidBindAddr { value: raw })
     }
 }
 
@@ -96,7 +98,13 @@ mod tests {
     /// CA-05 — valeur invalide : erreur explicite citant la variable et la valeur.
     #[test]
     fn ca05_rejects_invalid_bind_addr() {
-        for value in ["", "localhost", "127.0.0.1", "127.0.0.1:99999", "not an address"] {
+        for value in [
+            "",
+            "localhost",
+            "127.0.0.1",
+            "127.0.0.1:99999",
+            "not an address",
+        ] {
             let error = Config::from_lookup(lookup_with(Some(value))).unwrap_err();
             assert_eq!(
                 error,

@@ -5,6 +5,7 @@
 
 use tracing::Subscriber;
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
 
 /// Filtre de logs appliqué lorsque `RUST_LOG` est absente ou invalide.
 pub const DEFAULT_FILTER: &str = "info";
@@ -24,8 +25,9 @@ pub const DEFAULT_FILTER: &str = "info";
 /// ```
 #[must_use]
 pub fn env_filter(filter: Option<&str>) -> EnvFilter {
-    let _ = filter;
-    todo!()
+    filter
+        .and_then(|directives| EnvFilter::try_new(directives).ok())
+        .unwrap_or_else(|| EnvFilter::new(DEFAULT_FILTER))
 }
 
 /// Construit le *subscriber* `tracing` du service : filtre [`env_filter`] et sortie JSON.
@@ -38,10 +40,9 @@ pub fn env_filter(filter: Option<&str>) -> EnvFilter {
 /// ```
 #[must_use]
 pub fn subscriber(filter: Option<&str>) -> impl Subscriber + Send + Sync {
-    let _ = filter;
-    todo!();
-    #[allow(unreachable_code)]
     tracing_subscriber::registry()
+        .with(env_filter(filter))
+        .with(tracing_subscriber::fmt::layer().json())
 }
 
 #[cfg(test)]
@@ -57,7 +58,8 @@ mod tests {
     fn env_filter_uses_valid_directives() {
         assert_eq!(
             env_filter(Some("warn,health_service=debug")).to_string(),
-            "warn,health_service=debug"
+            // EnvFilter réordonne les directives, de la plus spécifique à la plus générale.
+            "health_service=debug,warn"
         );
     }
 

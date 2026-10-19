@@ -7,7 +7,7 @@ const config = {
   testRunner: 'vitest',
   plugins: ['@stryker-mutator/vitest-runner'],
   // Mêmes exclusions que la couverture (ADR 0011).
-  mutate: ['src/**/*.{ts,tsx}', '!src/main.tsx', '!src/**/*.d.ts', '!src/**/*.test.{ts,tsx}'],
+  mutate: ['src/**/*.{ts,tsx}', '!src/main.tsx', '!src/**/*.test.{ts,tsx}'],
   reporters: ['clear-text', 'progress', 'html'],
   htmlReporter: { fileName: 'reports/mutation/index.html' },
   thresholds: { high: 100, low: 100, break: 100 },

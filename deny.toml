@@ -1,0 +1,41 @@
+# Configuration cargo-deny (ADR 0015) : avis de sécurité, licences, doublons, sources.
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+all-features = true
+
+[advisories]
+# Toute vulnérabilité ou crate non maintenue signalée par RustSec fait échouer la CI.
+# Une exception doit être ajoutée ici avec son identifiant et une justification.
+ignore = []
+
+[licenses]
+# Liste blanche de licences permissives compatibles avec la licence du projet (MIT).
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.9
+# Licences autorisées mais pas encore rencontrées : pas d'avertissement.
+unused-allowed-license = "allow"
+
+[licenses.private]
+# Les crates du workspace (publish = false) ne sont pas soumises à la liste blanche.
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

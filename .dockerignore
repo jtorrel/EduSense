@@ -1,0 +1,9 @@
+.git
+target
+**/node_modules
+frontend/dist
+frontend/coverage
+frontend/reports
+frontend/.stryker-tmp
+mutants.out*
+.env

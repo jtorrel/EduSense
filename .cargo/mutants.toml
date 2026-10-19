@@ -1,0 +1,3 @@
+# Configuration cargo-mutants (ADR 0012). Mêmes exclusions que la couverture (ADR 0011) :
+# les main.rs ne font que de l'assemblage et ne sont pas testés unitairement.
+exclude_globs = ["**/src/main.rs"]

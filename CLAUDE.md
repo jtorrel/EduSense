@@ -73,7 +73,7 @@ Testing Library, Stryker, ESLint, Prettier.
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo llvm-cov --workspace --fail-under-lines 100 --ignore-filename-regex 'main\.rs$'
+cargo cov                          # alias llvm-cov : seuil 100 %, exclusion des main.rs
 cargo mutants --workspace          # ou --in-diff <fichier.diff>
 cargo deny check
 cargo doc --workspace --no-deps

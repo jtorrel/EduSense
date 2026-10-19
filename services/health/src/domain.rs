@@ -24,7 +24,7 @@ pub enum HealthStatus {
 /// ```
 #[must_use]
 pub fn check() -> HealthStatus {
-    todo!()
+    HealthStatus::Ok
 }
 
 #[cfg(test)]

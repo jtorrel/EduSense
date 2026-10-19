@@ -10,7 +10,7 @@ Phase 2 (code) de l'étape `$ARGUMENTS`.
 3. Vérifie localement, et corrige jusqu'à ce que tout passe :
    - `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`
    - `cargo test --workspace`
-   - `cargo llvm-cov --workspace --fail-under-lines 100 --ignore-filename-regex 'main\.rs$'`
+   - `cargo cov` (alias `cargo llvm-cov` défini dans `.cargo/config.toml`, seuil 100 %)
    - `cargo doc --workspace --no-deps`, `cargo deny check`
    - front : `npm run lint`, `npm run typecheck`, `npm run test:coverage`, `npm run build`
 4. Toute exclusion de couverture nouvelle doit être conforme à l'ADR 0011 (et justifiée).

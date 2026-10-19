@@ -1,4 +1,6 @@
+# Toolchain épinglée (ADR 0015). Montée de version : par PR dédiée, avec mise à jour des
+# images Docker (services/*/Dockerfile) et de rust-version dans Cargo.toml.
 [toolchain]
 channel = "1.97.1"
-components = ["rustfmt", "clippy", "llvm-tools-preview"]
+components = ["rustfmt", "clippy"]
 profile = "minimal"

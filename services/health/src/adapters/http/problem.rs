@@ -2,7 +2,9 @@
 //!
 //! Seules des informations destinées au client y figurent : aucune cause interne.
 
+use axum::Json;
 use axum::http::StatusCode;
+use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -41,20 +43,25 @@ impl ProblemDetails {
     /// ```
     #[must_use]
     pub fn from_status(status: StatusCode) -> Self {
-        let _ = status;
-        todo!()
+        Self {
+            problem_type: "about:blank".to_owned(),
+            title: status.canonical_reason().unwrap_or("Unknown").to_owned(),
+            status: status.as_u16(),
+            detail: None,
+        }
     }
 }
 
 impl IntoResponse for ProblemDetails {
     fn into_response(self) -> Response {
-        todo!()
+        let status = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        (status, [(CONTENT_TYPE, PROBLEM_JSON)], Json(self)).into_response()
     }
 }
 
 /// Gestionnaire de repli : toute route inconnue produit un `404` Problem Details.
 pub async fn not_found() -> ProblemDetails {
-    todo!()
+    ProblemDetails::from_status(StatusCode::NOT_FOUND)
 }
 
 #[cfg(test)]
