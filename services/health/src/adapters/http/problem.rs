@@ -6,7 +6,7 @@ use axum::Json;
 use axum::http::StatusCode;
 use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use utoipa::ToSchema;
 
 /// Type de média des réponses Problem Details.
@@ -20,8 +20,10 @@ pub struct ProblemDetails {
     pub problem_type: String,
     /// Résumé lisible du type de problème.
     pub title: String,
-    /// Code de statut HTTP.
-    pub status: u16,
+    /// Code de statut HTTP, identique à celui de la réponse (sérialisé en entier).
+    #[serde(serialize_with = "serialize_status")]
+    #[schema(value_type = u16)]
+    pub status: StatusCode,
     /// Explication propre à cette occurrence, destinée au client.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
@@ -39,14 +41,14 @@ impl ProblemDetails {
     ///
     /// let problem = ProblemDetails::from_status(StatusCode::NOT_FOUND);
     /// assert_eq!(problem.title, "Not Found");
-    /// assert_eq!(problem.status, 404);
+    /// assert_eq!(problem.status, StatusCode::NOT_FOUND);
     /// ```
     #[must_use]
     pub fn from_status(status: StatusCode) -> Self {
         Self {
             problem_type: "about:blank".to_owned(),
             title: status.canonical_reason().unwrap_or("Unknown").to_owned(),
-            status: status.as_u16(),
+            status,
             detail: None,
         }
     }
@@ -54,14 +56,29 @@ impl ProblemDetails {
 
 impl IntoResponse for ProblemDetails {
     fn into_response(self) -> Response {
-        let status = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        (status, [(CONTENT_TYPE, PROBLEM_JSON)], Json(self)).into_response()
+        (self.status, [(CONTENT_TYPE, PROBLEM_JSON)], Json(self)).into_response()
     }
 }
 
 /// Gestionnaire de repli : toute route inconnue produit un `404` Problem Details.
 pub async fn not_found() -> ProblemDetails {
     ProblemDetails::from_status(StatusCode::NOT_FOUND)
+}
+
+/// Gestionnaire des méthodes non supportées sur une route existante : `405` Problem Details.
+///
+/// axum conserve l'en-tête `Allow` listant les méthodes acceptées.
+pub async fn method_not_allowed() -> ProblemDetails {
+    ProblemDetails::from_status(StatusCode::METHOD_NOT_ALLOWED)
+}
+
+/// Sérialise un statut HTTP en entier (membre `status` de la RFC 9457).
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "signature imposée par serde"
+)]
+fn serialize_status<S: Serializer>(status: &StatusCode, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_u16(status.as_u16())
 }
 
 #[cfg(test)]
@@ -77,7 +94,7 @@ mod tests {
             ProblemDetails {
                 problem_type: "about:blank".to_owned(),
                 title: "Not Found".to_owned(),
-                status: 404,
+                status: StatusCode::NOT_FOUND,
                 detail: None,
             }
         );
@@ -93,7 +110,7 @@ mod tests {
         let problem = ProblemDetails {
             problem_type: "https://edusense.example/problems/test".to_owned(),
             title: "Test".to_owned(),
-            status: 422,
+            status: StatusCode::UNPROCESSABLE_ENTITY,
             detail: Some("détail client".to_owned()),
         };
         let response = problem.into_response();
@@ -110,21 +127,6 @@ mod tests {
                 "status": 422,
                 "detail": "détail client",
             })
-        );
-    }
-
-    /// CA-03 — un statut hors plage dans le corps ne fait pas paniquer : 500 générique.
-    #[tokio::test]
-    async fn ca03_into_response_with_invalid_status_falls_back_to_500() {
-        let problem = ProblemDetails {
-            problem_type: "about:blank".to_owned(),
-            title: "Invalide".to_owned(),
-            status: 1000,
-            detail: None,
-        };
-        assert_eq!(
-            problem.into_response().status(),
-            StatusCode::INTERNAL_SERVER_ERROR
         );
     }
 }

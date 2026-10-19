@@ -13,10 +13,12 @@ Spécification : [specs/etape-00-bootstrap.md](../../specs/etape-00-bootstrap.md
 |---|---|---|
 | `GET` | `/health` | `200` — `{"status":"ok"}` |
 | `GET` | `/api-docs/openapi.json` | `200` — spécification OpenAPI 3.1 |
+| `*` | route existante, autre méthode | `405` — `application/problem+json`, en-tête `Allow` |
 | `*` | autre | `404` — `application/problem+json` (RFC 9457) |
 
-Chaque réponse porte l'en-tête `x-request-id` : celui de la requête s'il est fourni, sinon un
-UUID v4 généré. Il figure aussi dans les logs de la requête.
+Chaque réponse porte l'en-tête `x-request-id` : celui de la requête s'il est valide (1 à 128
+caractères `[A-Za-z0-9._-]`), sinon un UUID v4 généré. Il figure aussi dans les logs de la
+requête (niveau `info`, chemin sans la query string).
 
 ## Configuration
 

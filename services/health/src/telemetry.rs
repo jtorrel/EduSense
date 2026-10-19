@@ -49,11 +49,13 @@ pub fn subscriber(filter: Option<&str>) -> impl Subscriber + Send + Sync {
 mod tests {
     use super::*;
 
+    /// Exigence §6 — sans `RUST_LOG`, les logs sont émis au niveau `info`.
     #[test]
     fn env_filter_defaults_to_info() {
         assert_eq!(env_filter(None).to_string(), DEFAULT_FILTER);
     }
 
+    /// Exigence §6 — des directives `RUST_LOG` valides sont appliquées.
     #[test]
     fn env_filter_uses_valid_directives() {
         assert_eq!(
@@ -63,11 +65,13 @@ mod tests {
         );
     }
 
+    /// Exigence §6 — des directives invalides ne coupent pas les logs : repli sur `info`.
     #[test]
     fn env_filter_falls_back_to_default_on_invalid_directives() {
         assert_eq!(env_filter(Some("=[")).to_string(), DEFAULT_FILTER);
     }
 
+    /// Exigence §6 — le subscriber du service applique le filtre de niveaux.
     #[test]
     fn subscriber_applies_filter() {
         let subscriber = subscriber(Some("warn"));

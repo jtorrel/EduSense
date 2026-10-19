@@ -5,6 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tsdoc from 'eslint-plugin-tsdoc'
 import { defineConfig, globalIgnores } from 'eslint/config'
 import globals from 'globals'
+import jsdoc from 'eslint-plugin-jsdoc'
 import tseslint from 'typescript-eslint'
 
 export default defineConfig([
@@ -19,7 +20,7 @@ export default defineConfig([
       reactRefresh.configs.vite,
       prettier,
     ],
-    plugins: { tsdoc },
+    plugins: { tsdoc, jsdoc },
     languageOptions: {
       ecmaVersion: 2023,
       globals: globals.browser,
@@ -30,6 +31,19 @@ export default defineConfig([
     },
     rules: {
       'tsdoc/syntax': 'error',
+      // TSDoc obligatoire sur tout export (équivalent de missing_docs côté Rust).
+      'jsdoc/require-jsdoc': [
+        'error',
+        {
+          publicOnly: true,
+          require: {
+            FunctionDeclaration: true,
+            ArrowFunctionExpression: true,
+            FunctionExpression: true,
+            ClassDeclaration: true,
+          },
+        },
+      ],
     },
   },
 ])

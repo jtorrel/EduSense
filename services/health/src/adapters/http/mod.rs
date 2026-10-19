@@ -5,13 +5,16 @@
 //! | `GET` | `/health` | État de santé du service. |
 //! | `GET` | `/api-docs/openapi.json` | Spécification OpenAPI du service. |
 //!
-//! Toute autre route renvoie `404` au format Problem Details ([`problem`]).
-//! Chaque réponse porte l'en-tête [`REQUEST_ID_HEADER`] (ADR 0006).
+//! Toute autre route renvoie `404`, et toute méthode non supportée `405`, au format Problem
+//! Details ([`problem`]).
+//! Chaque réponse porte l'en-tête [`REQUEST_ID_HEADER`] (ADR 0006) : celui du client s'il est
+//! valide (1 à [`MAX_REQUEST_ID_LEN`] caractères `[A-Za-z0-9._-]`), sinon un UUID v4 généré.
 
 pub mod problem;
 
 use axum::body::Body;
 use axum::http::{HeaderName, Request};
+use axum::middleware;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
@@ -24,6 +27,9 @@ use crate::domain::{self, HealthStatus};
 
 /// En-tête HTTP portant l'identifiant de corrélation de la requête.
 pub const REQUEST_ID_HEADER: &str = "x-request-id";
+
+/// Longueur maximale d'un `x-request-id` fourni par le client.
+pub const MAX_REQUEST_ID_LEN: usize = 128;
 
 /// Chemin de la spécification OpenAPI.
 pub const OPENAPI_PATH: &str = "/api-docs/openapi.json";
@@ -60,6 +66,7 @@ pub fn router() -> Router {
         .route("/health", get(health))
         .route(OPENAPI_PATH, get(openapi))
         .fallback(problem::not_found)
+        .method_not_allowed_fallback(problem::method_not_allowed)
         .layer(PropagateRequestIdLayer::new(request_id.clone()))
         .layer(
             TraceLayer::new_for_http()
@@ -67,6 +74,30 @@ pub fn router() -> Router {
                 .on_response(DefaultOnResponse::new().level(Level::INFO)),
         )
         .layer(SetRequestIdLayer::new(request_id, MakeRequestUuid))
+        .layer(middleware::map_request(discard_invalid_request_id))
+}
+
+/// Supprime un `x-request-id` client invalide, pour qu'un UUID soit généré à la place.
+///
+/// Un identifiant valide compte 1 à [`MAX_REQUEST_ID_LEN`] caractères parmi `[A-Za-z0-9._-]` :
+/// il ne peut ni gonfler les logs ni y injecter de caractères de contrôle.
+async fn discard_invalid_request_id(mut request: Request<Body>) -> Request<Body> {
+    let invalid = request
+        .headers()
+        .get_all(REQUEST_ID_HEADER)
+        .iter()
+        .any(|value| !is_valid_request_id(value.as_bytes()));
+    if invalid {
+        request.headers_mut().remove(REQUEST_ID_HEADER);
+    }
+    request
+}
+
+fn is_valid_request_id(value: &[u8]) -> bool {
+    (1..=MAX_REQUEST_ID_LEN).contains(&value.len())
+        && value
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
 /// Span de trace d'une requête : méthode, chemin (sans la query, qui peut contenir des
@@ -95,7 +126,15 @@ async fn openapi() -> Json<utoipa::openapi::OpenApi> {
     get,
     path = "/health",
     tag = "health",
-    responses((status = 200, description = "Service opérationnel", body = HealthResponse))
+    responses(
+        (status = 200, description = "Service opérationnel", body = HealthResponse),
+        (
+            status = 405,
+            description = "Méthode non supportée",
+            body = problem::ProblemDetails,
+            content_type = "application/problem+json"
+        )
+    )
 )]
 async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {

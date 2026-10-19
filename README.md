@@ -51,5 +51,10 @@ et `rustup component add llvm-tools-preview`.
 
 ## Configuration GitHub (à faire une fois)
 
-- Protection de la branche `main` : PR obligatoire, check requis **`CI OK`** (et CodeQL).
+- Ruleset sur `main` (Settings → Rules → Rulesets) :
+  - PR obligatoire avant merge ;
+  - check requis **`CI OK`** (synthèse de tous les jobs du workflow CI) ;
+  - règle **« Require code scanning results »** : outil CodeQL, seuil *Errors* et alertes de
+    sécurité *High or higher*. Un job CodeQL réussit même s'il trouve des alertes : seul ce
+    réglage rend CodeQL réellement bloquant.
 - Activer Dependabot alerts, secret scanning et push protection (Settings → Code security).

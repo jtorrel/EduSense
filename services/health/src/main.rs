@@ -13,7 +13,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let filter = std::env::var("RUST_LOG").ok();
     tracing::subscriber::set_global_default(telemetry::subscriber(filter.as_deref()))?;
 
-    let config = Config::from_env()?;
+    let config = match Config::from_env() {
+        Ok(config) => config,
+        Err(error) => {
+            // Message explicite (Display) dans les logs JSON plutôt que le Debug de `main`.
+            tracing::error!(%error, "configuration invalide");
+            std::process::exit(1);
+        }
+    };
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "health-service à l'écoute");
 

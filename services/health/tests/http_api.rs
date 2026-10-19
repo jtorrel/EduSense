@@ -33,11 +33,39 @@ async fn ca01_health_returns_ok() {
     );
 }
 
-/// CA-01 — seule la méthode GET est acceptée sur `/health`.
+/// CA-03 — une méthode non supportée sur une route existante renvoie `405` en
+/// `application/problem+json`, avec l'en-tête `Allow`.
 #[tokio::test]
-async fn ca01_health_rejects_other_methods() {
-    let response = send(Request::post("/health").body(Body::empty()).unwrap()).await;
-    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+async fn ca03_unsupported_method_returns_problem_details() {
+    for (method, uri) in [("POST", "/health"), ("DELETE", OPENAPI_PATH)] {
+        let request = Request::builder()
+            .method(method)
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap();
+        let response = send(request).await;
+
+        assert_eq!(
+            response.status(),
+            StatusCode::METHOD_NOT_ALLOWED,
+            "{method} {uri}"
+        );
+        assert_eq!(
+            response.headers()["content-type"],
+            "application/problem+json"
+        );
+        assert!(
+            response.headers()["allow"]
+                .to_str()
+                .unwrap()
+                .contains("GET"),
+            "{method} {uri}"
+        );
+        assert_eq!(
+            json_body(response).await,
+            serde_json::json!({"type": "about:blank", "title": "Method Not Allowed", "status": 405})
+        );
+    }
 }
 
 /// CA-02 — la spécification OpenAPI 3.1 est servie et décrit `GET /health`.
@@ -55,6 +83,16 @@ async fn ca02_openapi_document_describes_health() {
     assert_eq!(doc["info"]["title"], "health-service");
     assert!(doc["paths"]["/health"]["get"]["responses"]["200"].is_object());
     assert!(doc["components"]["schemas"]["HealthResponse"].is_object());
+    // Les erreurs sont documentées au format Problem Details (base du futur client TS).
+    assert_eq!(
+        doc["paths"]["/health"]["get"]["responses"]["405"]["content"]["application/problem+json"]["schema"]
+            ["$ref"],
+        "#/components/schemas/ProblemDetails"
+    );
+    assert_eq!(
+        doc["components"]["schemas"]["ProblemDetails"]["properties"]["status"]["type"],
+        "integer"
+    );
 }
 
 /// CA-03 — une route inconnue renvoie `404` en `application/problem+json`, sans détail interne.
@@ -92,6 +130,50 @@ async fn ca04_generates_request_id_when_absent() {
         let response = get(uri).await;
         let id = response.headers()[REQUEST_ID_HEADER].to_str().unwrap();
         uuid::Uuid::parse_str(id).unwrap_or_else(|_| panic!("UUID attendu, reçu {id}"));
+    }
+}
+
+/// CA-04 — un `x-request-id` valide de longueur maximale (128) est conservé.
+#[tokio::test]
+async fn ca04_accepts_request_id_at_max_length() {
+    let id = format!("{}-._", "a".repeat(125));
+    assert_eq!(id.len(), 128);
+    let request = Request::get("/health")
+        .header(REQUEST_ID_HEADER, &id)
+        .body(Body::empty())
+        .unwrap();
+
+    assert_eq!(
+        send(request).await.headers()[REQUEST_ID_HEADER],
+        id.as_str()
+    );
+}
+
+/// CA-04 — un `x-request-id` invalide (trop long, vide, caractères interdits) est remplacé
+/// par un UUID généré.
+#[tokio::test]
+async fn ca04_replaces_invalid_request_id() {
+    let too_long = "a".repeat(129);
+    let invalid: [&[u8]; 6] = [
+        too_long.as_bytes(),
+        b"",
+        b"with space",
+        b"semi;colon",
+        b"slash/id",
+        "accentué".as_bytes(),
+    ];
+    for value in invalid {
+        let request = Request::get("/health")
+            .header(REQUEST_ID_HEADER, value)
+            .body(Body::empty())
+            .unwrap();
+        let response = send(request).await;
+        let id = response.headers()[REQUEST_ID_HEADER].to_str().unwrap();
+        assert!(
+            uuid::Uuid::parse_str(id).is_ok(),
+            "valeur {:?} : UUID attendu, reçu {id}",
+            String::from_utf8_lossy(value)
+        );
     }
 }
 

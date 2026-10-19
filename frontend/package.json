@@ -33,6 +33,7 @@
     "@vitest/coverage-v8": "~4.1.11",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsdoc": "^65.3.12",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "eslint-plugin-tsdoc": "^0.5.4",
