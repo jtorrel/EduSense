@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Nouveau ticket{% endblock %}
+{% block content %}
+<p><a href="/tickets">← Mes tickets</a></p>
+<h1>Nouveau ticket</h1>
+{% if !errors.is_empty() %}
+<div class="errors" role="alert"><ul>
+  {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+</ul></div>
+{% endif %}
+<form class="card" method="post" action="/tickets">
+  <input type="hidden" name="csrf" value="{{ nav.as_ref().unwrap().csrf }}">
+
+  <div class="row">
+    <div>
+      <label for="date">Date *</label>
+      <input type="date" id="date" name="date" value="{{ date }}" max="{{ today }}" required>
+    </div>
+    <div>
+      <label for="category">Catégorie *</label>
+      <select id="category" name="category" required>
+        <option value="">— Choisir —</option>
+        {% for c in categories %}
+        <option value="{{ c.value }}"{% if c.selected %} selected{% endif %}>{{ c.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <label for="teacher">Intervenant <span class="opt">(facultatif)</span></label>
+  <input type="text" id="teacher" name="teacher" value="{{ teacher }}" maxlength="255">
+
+  <fieldset style="border:0;padding:0;margin:0">
+    <legend style="font-weight:600;margin:.9rem 0 .3rem">Note * <span class="opt muted" style="font-weight:400">(0 = très insatisfait, 5 = très satisfait)</span></legend>
+    <div class="rating">
+      {% for (i, checked) in ratings %}
+      <input type="radio" id="r{{ i }}" name="rating" value="{{ i }}"{% if *checked %} checked{% endif %} required>
+      <label for="r{{ i }}">{{ i }}</label>
+      {% endfor %}
+    </div>
+  </fieldset>
+
+  <label for="comment">Commentaire <span class="opt">(facultatif)</span></label>
+  <textarea id="comment" name="comment" maxlength="5000">{{ comment }}</textarea>
+
+  <p class="muted">Votre avis est nominatif : l'équipe pédagogique verra votre nom. Une fois envoyé, il ne peut plus être modifié, mais vous pouvez l'annuler tant qu'il n'a pas été traité.</p>
+  <div class="actions">
+    <button class="btn" type="submit">Envoyer</button>
+    <a href="/tickets">Annuler</a>
+  </div>
+</form>
+{% endblock %}

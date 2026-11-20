@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# edusense — gestion des services sur le VPS.
+# Chaque service vit dans /srv/<service>/ :
+#   .env                version déployée + image (géré par cet outil)
+#   app.env             configuration du service (à compléter à la main)
+#   docker-compose.yml  généré par « edusense new »
+#   history             journal des déploiements
+set -euo pipefail
+
+ROOT=${EDUSENSE_ROOT:-/srv}
+SOCLE="$ROOT/socle"
+
+die()  { echo "✗ $*" >&2; exit 1; }
+info() { echo "→ $*"; }
+ok()   { echo "✓ $*"; }
+
+socle() { docker compose -f "$SOCLE/docker-compose.yml" "$@"; }
+svc_dir() { echo "$ROOT/$1"; }
+svc() { local s=$1; shift; docker compose -f "$(svc_dir "$s")/docker-compose.yml" --project-directory "$(svc_dir "$s")" -p "$s" "$@"; }
+
+check_name() {
+  [[ "${1:-}" =~ ^[a-z][a-z0-9-]{1,30}$ ]] || die "nom de service invalide « ${1:-} » (minuscules, chiffres, tirets)"
+  [ "$1" != socle ] && [ "$1" != backups ] || die "« $1 » est un nom réservé"
+}
+check_exists() { [ -f "$(svc_dir "$1")/docker-compose.yml" ] || die "service « $1 » inconnu (voir : edusense status)"; }
+
+get_var() { grep -E "^$2=" "$1" 2>/dev/null | tail -1 | cut -d= -f2- || true; }
+set_var() {
+  local file=$1 key=$2 val=$3
+  if grep -qE "^$key=" "$file"; then sed -i "s|^$key=.*|$key=$val|" "$file"; else echo "$key=$val" >> "$file"; fi
+}
+
+usage() {
+  cat <<'EOF'
+Usage :
+  edusense status                                  services, versions et état
+  edusense new <service> <domaine> <image> [port]  crée un service (dossier, base MySQL, HTTPS)
+  edusense deploy <service> <version>              déploie une version (ou revient à une ancienne)
+  edusense history <service>                       versions déployées
+  edusense logs <service>                          journaux en direct (Ctrl+C pour quitter)
+  edusense restart <service>                       redémarre (après modification de app.env)
+  edusense backup                                  sauvegarde toutes les bases maintenant
+
+Exemple :
+  edusense new avis avis.normandiewebschool.fr ghcr.io/mon-compte/avis-etudiants
+  nano /srv/avis/app.env
+  edusense deploy avis v1.0.0
+EOF
+}
+
+# ------------------------------------------------------------------ new
+cmd_new() {
+  local name=${1:-} domain=${2:-} image=${3:-} port=${4:-8080}
+  check_name "$name"
+  [ -n "$domain" ] && [ -n "$image" ] || die "usage : edusense new <service> <domaine> <image> [port]"
+  [[ "$domain" =~ ^[a-z0-9.-]+$ ]] || die "domaine invalide « $domain »"
+  [[ "$image" =~ ^[a-z0-9.:_/-]+$ && "${image##*/}" != *:* ]] || die "image invalide « $image » (sans « :version »)"
+  [[ "$port" =~ ^[0-9]+$ ]] || die "port invalide « $port »"
+  local dir; dir=$(svc_dir "$name")
+  [ ! -e "$dir/docker-compose.yml" ] || die "le service « $name » existe déjà"
+  mkdir -p "$dir"
+
+  info "Base de données"
+  local db=${name//-/_} pw; pw=$(openssl rand -hex 16)
+  socle exec -T mysql sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD"' 2>/dev/null <<SQL || die "MySQL ne répond pas (edusense status)"
+CREATE DATABASE IF NOT EXISTS \`$db\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '$db'@'%' IDENTIFIED BY '$pw';
+ALTER USER '$db'@'%' IDENTIFIED BY '$pw';
+GRANT ALL PRIVILEGES ON \`$db\`.* TO '$db'@'%';
+SQL
+
+  info "Fichiers du service"
+  cat > "$dir/.env" <<EOF
+IMAGE=$image
+VERSION=
+EOF
+  cat > "$dir/app.env" <<EOF
+# Configuration de « $name » — après modification : edusense restart $name
+DATABASE_URL=mysql://$db:$pw@mysql:3306/$db
+BIND_ADDR=0.0.0.0:$port
+PUBLIC_BASE_URL=https://$domain
+SESSION_SECRET=$(openssl rand -hex 32)
+RUST_LOG=info
+
+# Ajoutez ci-dessous les autres variables du service (voir son .env.example)
+EOF
+  chmod 600 "$dir/.env" "$dir/app.env"
+  cat > "$dir/docker-compose.yml" <<EOF
+# Généré par « edusense new » — la version se change avec : edusense deploy $name <version>
+services:
+  app:
+    image: "\${IMAGE}:\${VERSION:?aucune version, lancez edusense deploy $name VERSION}"
+    restart: unless-stopped
+    env_file: app.env
+    networks:
+      edusense:
+        aliases: [$name]
+networks:
+  edusense:
+    external: true
+EOF
+  touch "$dir/history"
+
+  info "Site HTTPS"
+  printf '%s {\n\treverse_proxy %s:%s\n}\n' "$domain" "$name" "$port" > "$SOCLE/sites/$name.caddy"
+  socle exec -T caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 \
+    || die "Caddy n'a pas accepté la configuration ($SOCLE/sites/$name.caddy)"
+
+  ok "Service « $name » créé."
+  cat <<EOF
+
+Étapes suivantes :
+  1. Faites pointer $domain vers ce serveur (enregistrement DNS A)
+  2. Complétez la configuration :   nano $dir/app.env
+  3. Déployez une version :         edusense deploy $name v1.0.0
+EOF
+}
+
+# ------------------------------------------------------------------ deploy
+wait_healthy() {
+  # Renvoie 0 si le conteneur tourne (et est « healthy » s'il a un healthcheck).
+  local name=$1 id state health
+  for _ in $(seq 1 45); do
+    id=$(svc "$name" ps -q app 2>/dev/null || true)
+    if [ -n "$id" ]; then
+      state=$(docker inspect -f '{{.State.Status}}' "$id")
+      health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id")
+      case "$state/$health" in
+        running/healthy) return 0 ;;
+        running/none) sleep 3; [ "$(docker inspect -f '{{.State.Status}}' "$id")" = running ] && return 0 ;;
+        exited/*|dead/*|*/unhealthy) return 1 ;;
+        restarting/*) return 1 ;;
+      esac
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+cmd_deploy() {
+  local name=${1:-} version=${2:-}
+  check_name "$name"; check_exists "$name"
+  [[ "$version" =~ ^[A-Za-z0-9._-]+$ ]] || die "usage : edusense deploy <service> <version>  (ex. v1.2.0)"
+  local dir env previous image
+  dir=$(svc_dir "$name"); env="$dir/.env"
+  previous=$(get_var "$env" VERSION); image=$(get_var "$env" IMAGE)
+
+  info "Téléchargement de $image:$version"
+  if ! docker pull -q "$image:$version" >/dev/null; then
+    die "image introuvable : $image:$version (la version existe-t-elle ? docker login ghcr.io fait ?)"
+  fi
+
+  set_var "$env" VERSION "$version"
+  info "Démarrage de $name $version"
+  svc "$name" up -d --remove-orphans >/dev/null 2>&1 || true
+
+  if wait_healthy "$name"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S')  $version  (avant : ${previous:-aucune})  par ${SUDO_USER:-${USER:-$(id -un)}}" >> "$dir/history"
+    ok "$name $version est en ligne."
+    docker image prune -f >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  echo; echo "✗ $name $version ne démarre pas correctement. Derniers journaux :"
+  svc "$name" logs --tail 30 app || true
+  if [ -n "$previous" ] && [ "$previous" != "$version" ]; then
+    echo; info "Retour automatique à la version précédente ($previous)"
+    set_var "$env" VERSION "$previous"
+    svc "$name" up -d >/dev/null 2>&1 || true
+    if wait_healthy "$name"; then ok "$name est revenu en $previous."; else echo "✗ La version $previous ne démarre pas non plus : voir edusense logs $name"; fi
+  elif [ -z "$previous" ]; then
+    set_var "$env" VERSION ""
+    svc "$name" down >/dev/null 2>&1 || true
+    echo; echo "Le service est arrêté. Vérifiez la configuration : nano $dir/app.env"
+  fi
+  exit 1
+}
+
+# ------------------------------------------------------------------ status & co
+cmd_status() {
+  echo "SOCLE"
+  socle ps --format '  {{.Service}}\t{{.State}}\t{{.Status}}' 2>/dev/null || echo "  (arrêté)"
+  echo; echo "SERVICES"
+  local found=0 d name version state
+  for d in "$ROOT"/*/; do
+    name=$(basename "$d")
+    [ "$name" = socle ] && continue
+    [ -f "$d/docker-compose.yml" ] || continue
+    found=1
+    version=$(get_var "$d/.env" VERSION)
+    state=$(svc "$name" ps --format '{{.Status}}' app 2>/dev/null | head -1 || true)
+    printf '  %-16s %-12s %s\n' "$name" "${version:-—}" "${state:-arrêté}"
+  done
+  [ $found = 1 ] || echo "  aucun (edusense new …)"
+}
+
+cmd_history() { check_name "${1:-}"; check_exists "$1"; cat "$(svc_dir "$1")/history"; }
+cmd_logs()    { check_name "${1:-}"; check_exists "$1"; svc "$1" logs -f --tail 100 app; }
+cmd_restart() {
+  check_name "${1:-}"; check_exists "$1"
+  svc "$1" up -d --force-recreate >/dev/null 2>&1
+  if wait_healthy "$1"; then ok "$1 redémarré."; else svc "$1" logs --tail 30 app; die "$1 ne démarre pas correctement"; fi
+}
+
+cmd_backup() {
+  local dest="$ROOT/backups" file
+  mkdir -p "$dest"
+  file="$dest/mysql-$(date +%Y%m%d-%H%M).sql.gz"
+  socle exec -T mysql sh -c 'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines --all-databases' 2>/dev/null \
+    | gzip > "$file"
+  [ "${PIPESTATUS[0]}" = 0 ] || { rm -f "$file"; die "échec de la sauvegarde"; }
+  chmod 600 "$file"
+  find "$dest" -name 'mysql-*.sql.gz' -mtime +14 -delete
+  ok "Sauvegarde : $file ($(du -h "$file" | cut -f1))"
+}
+
+case "${1:-}" in
+  status)  cmd_status ;;
+  new)     shift; cmd_new "$@" ;;
+  deploy)  shift; cmd_deploy "$@" ;;
+  history) shift; cmd_history "$@" ;;
+  logs)    shift; cmd_logs "$@" ;;
+  restart) shift; cmd_restart "$@" ;;
+  backup)  cmd_backup ;;
+  ""|help|-h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac

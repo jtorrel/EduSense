@@ -1,0 +1,33 @@
+# Environnement de développement : service + MySQL 5.7 (même version que le serveur ERP).
+# Usage : cp .env.example .env  (puis compléter)  &&  docker compose up --build
+services:
+  db:
+    image: mysql:5.7
+    platform: linux/amd64
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: edusense_avis
+      MYSQL_USER: avis
+      MYSQL_PASSWORD: avis
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    ports: ["3307:3306"]
+    volumes: ["db-data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uavis", "-pavis"]
+      interval: 5s
+      retries: 20
+
+  app:
+    build:
+      context: ../..            # racine du monorepo
+      args: { SERVICE: avis-etudiants }
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql://avis:avis@db:3306/edusense_avis
+    ports: ["8080:8080"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:

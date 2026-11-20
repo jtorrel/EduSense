@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Ticket #{{ t.id }}{% endblock %}
+{% block content %}
+{% let csrf = nav.as_ref().unwrap().csrf.as_str() %}
+<p><a href="/admin/tickets">← Tous les tickets</a></p>
+{% if let Some(f) = flash %}<div class="flash">{{ f }}</div>{% endif %}
+{% if let Some(e) = error %}<div class="errors" role="alert">{{ e }}</div>{% endif %}
+
+<div class="top row" style="align-items:center">
+  <h1 style="margin:0">Ticket #{{ t.id }}</h1>
+  <div style="flex:0 0 auto"><span class="badge {{ t.status_class }}">{{ t.status_label }}</span></div>
+</div>
+<p></p>
+
+<div class="card">
+  <dl class="facts">
+    <dt>Étudiant</dt><dd>{{ t.author_name }} <span class="muted">&lt;{{ t.author_email }}&gt;</span></dd>
+    <dt>Date</dt><dd>{{ t.date }}</dd>
+    <dt>Catégorie</dt><dd>{{ t.category }}</dd>
+    <dt>Intervenant</dt><dd>{% if t.teacher.is_empty() %}<span class="muted">—</span>{% else %}{{ t.teacher }}{% endif %}</dd>
+    <dt>Note</dt><dd><span class="stars">{{ t.stars }}</span> {{ t.rating }}/5</dd>
+    <dt>Envoyé le</dt><dd>{{ t.created_at }}</dd>
+  </dl>
+  <h2>Commentaire</h2>
+  {% if t.comment.is_empty() %}<p class="muted">Aucun commentaire.</p>{% else %}<div class="pre">{{ t.comment }}</div>{% endif %}
+</div>
+
+{% if can_set_status %}
+<form class="card" method="post" action="/admin/tickets/{{ t.id }}/status">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="row">
+    <div>
+      <label for="status" style="margin-top:0">Statut</label>
+      <select id="status" name="status">
+        {% for s in statuses %}<option value="{{ s.value }}"{% if s.selected %} selected{% endif %}>{{ s.label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div style="flex:0 0 auto"><button class="btn secondary" type="submit">Changer le statut</button></div>
+  </div>
+</form>
+{% endif %}
+
+{% if can_reply %}
+<form class="card reply" method="post" action="/admin/tickets/{{ t.id }}/reply">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label for="reply" style="margin-top:0">{% if t.reply.is_some() %}Réponse (modifier){% else %}Répondre à l'étudiant{% endif %}</label>
+  <textarea id="reply" name="reply" maxlength="5000" required>{{ reply_draft }}</textarea>
+  {% if t.reply.is_some() %}<p class="muted">Réponse actuelle envoyée par {{ t.replied_by }} le {{ t.replied_at }}. La nouvelle version remplacera l'ancienne.</p>{% endif %}
+  <div class="actions"><button class="btn" type="submit">Enregistrer la réponse</button></div>
+</form>
+{% else %}
+{% if let Some(r) = t.reply %}
+<div class="card reply">
+  <h2 style="margin-top:0">Réponse</h2>
+  <div class="pre">{{ r }}</div>
+  <p class="muted">Par {{ t.replied_by }} le {{ t.replied_at }}</p>
+</div>
+{% endif %}
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0">Historique</h2>
+  <ul class="list history">
+    {% for e in events %}<li>{{ e.when }} — {{ e.text }} <span class="muted">({{ e.actor }})</span></li>{% endfor %}
+  </ul>
+</div>
+
+{% if can_delete %}
+<form method="post" action="/admin/tickets/{{ t.id }}/delete" onsubmit="return confirm('Supprimer définitivement ce ticket ? Il ne sera plus visible par personne.')">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button class="btn danger" type="submit">Supprimer ce ticket</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Mes tickets{% endblock %}
+{% block content %}
+{% if let Some(f) = flash %}<div class="flash">{{ f }}</div>{% endif %}
+<div class="top row" style="align-items:center">
+  <h1 style="margin:0">Mes tickets</h1>
+  <div style="flex:0 0 auto"><a class="btn" href="/tickets/new">+ Nouveau ticket</a></div>
+</div>
+<p></p>
+{% if tickets.is_empty() %}
+<div class="card">
+  <p>Vous n'avez encore envoyé aucun avis.</p>
+  <p><a class="btn" href="/tickets/new">Donner mon premier avis</a></p>
+</div>
+{% else %}
+<ul class="list">
+  {% for t in tickets %}
+  <li><a class="item" href="/tickets/{{ t.id }}">
+    <div class="top">
+      <strong>{{ t.category }}{% if !t.teacher.is_empty() %} · {{ t.teacher }}{% endif %}</strong>
+      <span class="badge {{ t.status_class }}">{{ t.status_label }}</span>
+    </div>
+    <div class="meta">
+      {{ t.date }} · <span class="stars" aria-label="{{ t.rating }} sur 5">{{ t.stars }}</span>
+      {% if t.reply.is_some() %} · <strong>Réponse reçue</strong>{% endif %}
+    </div>
+    {% if !t.comment.is_empty() %}<div class="excerpt">{{ t.comment }}</div>{% endif %}
+  </a></li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

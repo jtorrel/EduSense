@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Ticket #{{ t.id }}{% endblock %}
+{% block content %}
+<p><a href="/tickets">← Mes tickets</a></p>
+{% if let Some(f) = flash %}<div class="flash">{{ f }}</div>{% endif %}
+<div class="top row" style="align-items:center">
+  <h1 style="margin:0">Ticket #{{ t.id }}</h1>
+  <div style="flex:0 0 auto"><span class="badge {{ t.status_class }}">{{ t.status_label }}</span></div>
+</div>
+<p></p>
+<div class="card">
+  <dl class="facts">
+    <dt>Date</dt><dd>{{ t.date }}</dd>
+    <dt>Catégorie</dt><dd>{{ t.category }}</dd>
+    {% if !t.teacher.is_empty() %}<dt>Intervenant</dt><dd>{{ t.teacher }}</dd>{% endif %}
+    <dt>Note</dt><dd><span class="stars">{{ t.stars }}</span> {{ t.rating }}/5</dd>
+    <dt>Envoyé le</dt><dd>{{ t.created_at }}</dd>
+  </dl>
+  {% if !t.comment.is_empty() %}
+  <h2>Commentaire</h2>
+  <div class="pre">{{ t.comment }}</div>
+  {% endif %}
+</div>
+
+{% if let Some(r) = t.reply %}
+<div class="card reply">
+  <h2 style="margin-top:0">Réponse de l'équipe pédagogique</h2>
+  <div class="pre">{{ r }}</div>
+  <p class="muted">Le {{ t.replied_at }}</p>
+</div>
+{% else %}
+<p class="muted">Pas encore de réponse.</p>
+{% endif %}
+
+{% if can_cancel %}
+<form method="post" action="/tickets/{{ t.id }}/cancel" onsubmit="return confirm('Annuler ce ticket ? Cette action est définitive.')">
+  <input type="hidden" name="csrf" value="{{ nav.as_ref().unwrap().csrf }}">
+  <button class="btn danger" type="submit">Annuler ce ticket</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,59 @@
+# Publication d'UN service, déclenchée par un tag « <service>/v<version> » :
+#   avis-etudiants/v1.2.0  →  image ghcr.io/<compte>/avis-etudiants:v1.2.0
+# À déployer ensuite sur le VPS avec :  edusense deploy avis v1.2.0
+name: Release
+
+on:
+  push:
+    tags: ["*/v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lire le tag
+        id: tag
+        run: |
+          SERVICE="${GITHUB_REF_NAME%%/*}"
+          VERSION="${GITHUB_REF_NAME#*/}"
+          test -f "services/$SERVICE/Cargo.toml" || { echo "::error::service inconnu : services/$SERVICE"; exit 1; }
+          echo "service=$SERVICE" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/$SERVICE" >> "$GITHUB_OUTPUT"
+          echo "### $SERVICE $VERSION" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests du service
+        run: |
+          cargo clippy -p ${{ steps.tag.outputs.service }} --all-targets -- -D warnings
+          cargo test -p ${{ steps.tag.outputs.service }}
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          build-args: SERVICE=${{ steps.tag.outputs.service }}
+          push: true
+          tags: |
+            ${{ steps.tag.outputs.image }}:${{ steps.tag.outputs.version }}
+            ${{ steps.tag.outputs.image }}:latest
+          cache-from: type=gha,scope=${{ steps.tag.outputs.service }}
+          cache-to: type=gha,mode=max,scope=${{ steps.tag.outputs.service }}
+
+      - name: Résumé
+        run: |
+          echo "Image : \`${{ steps.tag.outputs.image }}:${{ steps.tag.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Déployer : \`edusense deploy <service> ${{ steps.tag.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"

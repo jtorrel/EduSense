@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Admins{% endblock %}
+{% block content %}
+{% let csrf = nav.as_ref().unwrap().csrf.as_str() %}
+{% if let Some(f) = flash %}<div class="flash">{{ f }}</div>{% endif %}
+{% if let Some(e) = error %}<div class="errors" role="alert">{{ e }}</div>{% endif %}
+<h1>Gestion des admins</h1>
+
+<form class="card" method="post" action="/admin/admins">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="row">
+    <div>
+      <label for="email" style="margin-top:0">Ajouter un admin</label>
+      <input type="email" id="email" name="email" value="{{ email }}" placeholder="prenom.nom@{{ domain }}" required>
+    </div>
+    <div style="flex:0 0 auto"><button class="btn" type="submit">Ajouter</button></div>
+  </div>
+</form>
+
+<div class="card">
+  <h2 style="margin-top:0">Admins</h2>
+  {% if admins.is_empty() %}
+  <p class="muted">Aucun admin pour l'instant.</p>
+  {% else %}
+  <table class="simple">
+    {% for a in admins %}
+    <tr>
+      <td><strong>{{ a.email }}</strong>{% if !a.name.is_empty() %}<br><span class="muted">{{ a.name }}</span>{% endif %}</td>
+      <td class="muted">Ajouté le {{ a.added }}</td>
+      <td style="text-align:right">
+        <form class="inline" method="post" action="/admin/admins/remove" onsubmit="return confirm('Retirer cette personne des admins ?')">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="email" value="{{ a.email }}">
+          <button class="btn danger" type="submit">Retirer</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Superadmins</h2>
+  <p class="muted">Définis dans la configuration du serveur (variable <code>SUPERADMINS</code>) : ils ne se gèrent pas ici.</p>
+  <ul>{% for s in superadmins %}<li>{{ s }}</li>{% endfor %}</ul>
+</div>
+{% endblock %}

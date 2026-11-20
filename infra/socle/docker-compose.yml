@@ -1,0 +1,37 @@
+# Socle commun : Caddy (HTTPS automatique) + MySQL 8, partagés par tous les services.
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./sites:/etc/caddy/sites:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edusense]
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    env_file: .env
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks: [edusense]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      retries: 30
+
+volumes:
+  caddy-data:
+  caddy-config:
+  mysql-data:
+
+networks:
+  edusense:
+    external: true

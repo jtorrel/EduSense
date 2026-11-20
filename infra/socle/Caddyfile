@@ -1,0 +1,2 @@
+# Un fichier par service dans sites/ (créé par « edusense new »).
+import /etc/caddy/sites/*.caddy
